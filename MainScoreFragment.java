@@ -5,6 +5,7 @@ import android.animation.ArgbEvaluator;
 import android.animation.ObjectAnimator;
 import android.content.Context;
 import android.graphics.Color;
+import android.os.AsyncTask;
 import android.os.Bundle;
 
 import android.support.annotation.Nullable;
@@ -24,13 +25,13 @@ import android.widget.Toast;
 import com.example.user.quickscorer.Database.PlayerDatabaseSource;
 import com.example.user.quickscorer.Database.PlayerModel;
 import com.example.user.quickscorer.Interface.ScorecardListener;
+import com.example.user.quickscorer.Preference.GamePreference;
 import com.github.clans.fab.FloatingActionButton;
 import com.github.clans.fab.FloatingActionMenu;
 
 import java.util.ArrayList;
 
 import static com.example.user.quickscorer.Constants.OUT;
-import static com.example.user.quickscorer.Constants.TOTAL_WICKETS;
 
 
 public class MainScoreFragment extends Fragment {
@@ -41,7 +42,7 @@ public class MainScoreFragment extends Fragment {
     private String[]batsmenPair = new String[2];
     private int runPerBall,ballCount,currentOver,totalScore,fallOfWicket,targetScore,strikePointer;
     private double currentRunRate,reqRunRate;
-    private TextView vsTV,totalOverLabelTV,teamNameTV,scoreTV,overTV,runRateTV,reqRunRateTV,targetTV,inningsLabel,inputDisplayTV, ballByBallStatTV,batsManOneTV, batsManOneRunTV, batsManOneBallTV, batsManTwoTV, batsManTwoRunTV, batsManTwoBallTV;
+    private TextView vsTV,totalOverLabelTV,teamNameTV,scoreTV,overTV,runRateTV,reqRunRateTV,targetTV,inningsLabel,inputDisplayTV, ballByBallStatTV,batsManOneTV, batsManOneRunTV, batsManOneBallTV, batsManTwoTV, batsManTwoRunTV, batsManTwoBallTV, extraScoreTV;
     private TextView bowlerNameTV,bowlerOverTV;
     private String inputDisplayRunText = "";
     private String inputDisplayExtraText = "";
@@ -63,7 +64,7 @@ public class MainScoreFragment extends Fragment {
     private Button strikeBtn,changeBatsmanBtn,changeBowlerBtn,playBtn,addScoreBtn,setupInningsBtn,clearDisplayBtn;
     private int runBtnColor, runBtnColorPressed,controlBtnColor,controlBtnColorPressed;
     private String currentInnings,tossWinner,electsTo,firstInningsTeam,secondInningsTeam;
-    private int totalOver,teamOneId,teamTwoId,dismissedBatsmanIndex,firstInningsExtraRuns,secondInningsExtraRuns;
+    private int totalOver,teamOneId,teamTwoId,dismissedBatsmanIndex,firstInningsExtraRuns,secondInningsExtraRuns,inningsExtra;
     private IndividualScoreModel model1;
     private IndividualScoreModel model2;
     private BowlerModel bowlerObj;
@@ -76,9 +77,11 @@ public class MainScoreFragment extends Fragment {
     private String typeOfWicketFall,ballStats="",fielderName = "someone";
     private ScorecardListener scorecardListener;
     private Scorecard scorecard;
-    private String illegalDeliveryText="";
-    private String byeDeliveryText="";
-    private String wicketDeliveryText="";
+    private String illegalDeliveryText = "";
+    private String byeDeliveryText = "";
+    private String wicketDeliveryText = "";
+    private String previousBowler;
+    private GamePreference gamePreference;
 
     public MainScoreFragment() {
         // Required empty public constructor
@@ -99,16 +102,14 @@ public class MainScoreFragment extends Fragment {
         menuExtra = (FloatingActionMenu) view.findViewById(R.id.menuExtra);
         menuWicket = (FloatingActionMenu) view.findViewById(R.id.menuWicket);
         alert = new AlertDialog.Builder(getContext());
+        gamePreference = new GamePreference(getContext());
         firstInningsBowlingScorecard = new ArrayList<>();
         secondInningsBowlingScorecard = new ArrayList<>();
         firstInningsBattingScoreCard = new ArrayList<>();
         secondInningsBattingScoreCard = new ArrayList<>();
-        playerDatabaseSource = new PlayerDatabaseSource(getContext());
-        firstInningsTeamPlayers = new ArrayList<>();
-        secondInningsTeamPlayers = new ArrayList<>();
         scorecard = new Scorecard();
-        firstInningsTeamPlayers = playerDatabaseSource.getTeamPlayers(teamOneId);
-        secondInningsTeamPlayers = playerDatabaseSource.getTeamPlayers(teamTwoId);
+        /*TRIGGER DATABASE*/
+        new DatabaseTask().execute();
         initializeButtons(view);
         initializeTextViews(view);
         disableOptionButtons();
@@ -117,9 +118,28 @@ public class MainScoreFragment extends Fragment {
         playBtn.setAlpha(0.5f);
         addScoreBtn.setEnabled(false);
         addScoreBtn.setAlpha(0.5f);
-        vsTV.setText(firstInningsTeam+" Vs "+secondInningsTeam);
-        totalOverLabelTV.setText(Integer.toString(totalOver)+" Overs Match");
         inputDisplayTV.setText(tossWinner+" won the toss and elected to "+electsTo+" first");
+    }
+    private class DatabaseTask extends AsyncTask<Void,Void,Boolean>{
+        @Override
+        protected void onPreExecute() {
+            playerDatabaseSource = new PlayerDatabaseSource(getContext());
+            firstInningsTeamPlayers = new ArrayList<>();
+            secondInningsTeamPlayers = new ArrayList<>();
+        }
+
+        @Override
+        protected Boolean doInBackground(Void... voids) {
+            firstInningsTeamPlayers = playerDatabaseSource.getTeamPlayers(teamOneId);
+            secondInningsTeamPlayers = playerDatabaseSource.getTeamPlayers(teamTwoId);
+            return true;
+        }
+
+        @Override
+        protected void onPostExecute(Boolean aBoolean) {
+            vsTV.setText(firstInningsTeam+" Vs "+secondInningsTeam);
+            totalOverLabelTV.setText(Integer.toString(totalOver)+" Overs Match");
+        }
     }
 
     @Override
@@ -191,8 +211,6 @@ public class MainScoreFragment extends Fragment {
                     typeOfWicketFall = v.getLabelText();
                     wicketDeliveryText = typeOfWicketFall;
                     inputDisplayTV.setText(inputDisplayRunText+" "+illegalDeliveryText+" "+byeDeliveryText+" "+wicketDeliveryText);
-                    v.setEnabled(false);
-                    v.setAlpha(0.5f);
                     break;
             }
         }
@@ -247,10 +265,47 @@ public class MainScoreFragment extends Fragment {
             }
         }
     };
+    private View.OnClickListener selectBatsmanListener = new View.OnClickListener() {
+        @Override
+        public void onClick(View view) {
+            final TextView batsmanTV = (TextView) view;
+            LayoutInflater layoutInflater = LayoutInflater.from(getContext());
+            final View layout = layoutInflater.inflate(R.layout.batsman_list_layout,null);
+            final ListView batsmanLV = (ListView) layout.findViewById(R.id.batsmanListView);
+            if(currentInnings.equals(Constants.FIRST_INNINGS)){
+                batsmanCustomAdapter = new BatsmanCustomAdapter(getContext(),firstInningsTeamPlayers);
+            }else if(currentInnings.equals(Constants.SECOND_INNINGS)){
+                batsmanCustomAdapter = new BatsmanCustomAdapter(getContext(),secondInningsTeamPlayers);
+            }
+            batsmanLV.setAdapter(batsmanCustomAdapter);
+            alert.setTitle("Select Batsman");
+            alert.setView(layout);
+            alert.setNegativeButton("Ok",null);
+            alert.show();
+            batsmanLV.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+                @Override
+                public void onItemClick(AdapterView<?> adapterView, View view, int i, long l) {
+                    final String name;
+                    if(currentInnings.equals(Constants.FIRST_INNINGS)){
+                        name = firstInningsTeamPlayers.get(i).getPlayerName();
+                    }else if(currentInnings.equals(Constants.SECOND_INNINGS)){
+                        name = secondInningsTeamPlayers.get(i).getPlayerName();
+                    }
+                    switch (batsmanTV.getId()){
+                        case R.id.batsmanOne:
+
+                            break;
+                        case R.id.batsmanTwo:
+                            break;
+                    }
+                }
+            });
+        }
+    };
     private void addToScore(){
         if((inputDisplayRunText.length() > 0 || illegalDeliveryText.length() > 0 || byeDeliveryText.length() > 0 || wicketDeliveryText.length() > 0)
-                && (bowlerObj != null && model1 != null && model2 != null)){
-            hereComesThePain();
+                && (batsManOneTV.length() > 0 && batsManTwoTV.length() > 0 && bowlerNameTV.length() > 0)){
+            finalizeScore();
         }else{
             inputDisplayTV.setText("Either your Batsmen or Bowler fields are Empty Or you haven't entered Runs on board!");
         }
@@ -274,6 +329,7 @@ public class MainScoreFragment extends Fragment {
     private void checkEndOfInnings(){
         if(currentInnings == Constants.FIRST_INNINGS){
             if(fallOfWicket == Constants.TOTAL_WICKETS || currentOver == totalOver){
+                firstInningsExtraRuns = inningsExtra;
                 targetScore = totalScore + 1;
                 reqRunRate = (double)targetScore / totalOver;
                 addScoreBtn.setEnabled(false);
@@ -288,23 +344,29 @@ public class MainScoreFragment extends Fragment {
             }
         }else if(currentInnings == Constants.SECOND_INNINGS){
             if(totalScore >= targetScore && currentOver <= totalOver && fallOfWicket < Constants.TOTAL_WICKETS){
+                secondInningsExtraRuns = inningsExtra;
                 inputDisplayTV.setText(secondInningsTeam+" wins by "+Integer.toString(Constants.TOTAL_WICKETS - fallOfWicket)+" wickets!");
                 addScoreBtn.setEnabled(false);
                 addScoreBtn.setAlpha(0.5f);
                 disableScoreButtons();
                 disableOptionButtons();
+                gamePreference.setGameStatus(getString(R.string.game_status_off));
             }else if(totalScore == targetScore - 1 && (currentOver == totalOver || fallOfWicket == Constants.TOTAL_WICKETS)){
+                secondInningsExtraRuns = inningsExtra;
                 inputDisplayTV.setText("Match drawn!!!");
                 addScoreBtn.setEnabled(false);
                 addScoreBtn.setAlpha(0.5f);
                 disableScoreButtons();
                 disableOptionButtons();
+                gamePreference.setGameStatus(getString(R.string.game_status_off));
             }else if(totalScore < targetScore - 1 && (currentOver == totalOver || fallOfWicket == Constants.TOTAL_WICKETS)){
+                secondInningsExtraRuns = inningsExtra;
                 inputDisplayTV.setText(firstInningsTeam+" wins by "+Integer.toString((targetScore - 1) - totalScore)+" run(s)");
                 addScoreBtn.setEnabled(false);
                 addScoreBtn.setAlpha(0.5f);
                 disableScoreButtons();
                 disableOptionButtons();
+                gamePreference.setGameStatus(getString(R.string.game_status_off));
             }
         }
     }
@@ -321,6 +383,7 @@ public class MainScoreFragment extends Fragment {
         strikePointer = 0;
         firstInningsExtraRuns = 0;
         secondInningsExtraRuns = 0;
+        inningsExtra = 0;
         batsmanIsOut = false;
         batsManOneTV.setTextColor(ContextCompat.getColor(getActivity().getApplicationContext(),R.color.appFontBlack));
         batsManTwoTV.setTextColor(ContextCompat.getColor(getActivity().getApplicationContext(),R.color.appFontBlack));
@@ -352,6 +415,7 @@ public class MainScoreFragment extends Fragment {
         overTV.setText(Integer.toString(currentOver)+"."+Integer.toString(ballCount)+" overs");
         runRateTV.setText(Double.toString(currentRunRate));
         inputDisplayTV.setText("");
+        ballByBallStatTV.setText("");
         enableOptionButtons();
     }
     private void play(){
@@ -412,7 +476,6 @@ public class MainScoreFragment extends Fragment {
                 @Override
                 public void onItemClick(AdapterView<?> adapterView, View view, int i, long l) {
                     if(currentInnings.equals(Constants.FIRST_INNINGS)){
-                        boolean exist = false;
                         final String name = firstInningsTeamPlayers.get(i).getPlayerName();
                         if(strikePointer == 0){
                             batsmenPair[0] = name;
@@ -543,16 +606,20 @@ public class MainScoreFragment extends Fragment {
                     for(BowlerModel bm:firstInningsBowlingScorecard){
                         if(bm.getBowlerName().equals(b)){
                             exist = true;
-                            bowlerObj = bm;
+                            if(previousBowler == null || !previousBowler.equals(b)){
+                                bowlerObj = bm;
+                            }else{
+                                Toast.makeText(getActivity().getApplicationContext(), "Select another", Toast.LENGTH_SHORT).show();
+                            }
                         }
                     }
                     if(!exist){
                         bowlerObj = new BowlerModel(bowlerNameTV.getText().toString(),0,0,0,0,0.0,0,0);
                         firstInningsBowlingScorecard.add(bowlerObj);
-                        //scorecardListener.getSecondInningsBowlingScorecardModels(firstInningsBowlingScorecard);
                         scorecard.setFirstInningsBowlerModels(firstInningsBowlingScorecard);
                     }
                     setBowlerStats();
+                    previousBowler = b;
                 }else if(currentInnings == Constants.SECOND_INNINGS){
                     boolean exist = false;
                     final String b = firstInningsTeamPlayers.get(i).getPlayerName();
@@ -560,16 +627,20 @@ public class MainScoreFragment extends Fragment {
                     for(BowlerModel bm:secondInningsBowlingScorecard){
                         if(bm.getBowlerName().equals(b)){
                             exist = true;
-                            bowlerObj = bm;
+                            if(previousBowler == null || !previousBowler.equals(b)){
+                                bowlerObj = bm;
+                            }else{
+                                Toast.makeText(getActivity().getApplicationContext(), "Select another", Toast.LENGTH_SHORT).show();
+                            }
                         }
                     }
                     if(!exist){
                         bowlerObj = new BowlerModel(bowlerNameTV.getText().toString(),0,0,0,0,0.0,0,0);
                         secondInningsBowlingScorecard.add(bowlerObj);
-                        //scorecardListener.getSecondInningsBowlingScorecardModels(secondInningsBowlingScorecard);
                         scorecard.setSecondInningsBowlerModels(secondInningsBowlingScorecard);
                     }
                     setBowlerStats();
+                    previousBowler = b;
                 }
             }
         });
@@ -708,6 +779,7 @@ public class MainScoreFragment extends Fragment {
         runRateTV = (TextView) view.findViewById(R.id.runRate);
         reqRunRateTV = (TextView) view.findViewById(R.id.reqRunRate);
         targetTV = (TextView) view.findViewById(R.id.targetScore);
+        extraScoreTV = (TextView) view.findViewById(R.id.extraScore);
         inningsLabel = (TextView) view.findViewById(R.id.inningsLabel);
         inputDisplayTV = (TextView) view.findViewById(R.id.inputDisplay);
         ballByBallStatTV = (TextView) view.findViewById(R.id.ballByBallStats);
@@ -719,7 +791,8 @@ public class MainScoreFragment extends Fragment {
         batsManTwoBallTV = (TextView) view.findViewById(R.id.batsmanTwoBall);
         bowlerNameTV = (TextView) view.findViewById(R.id.bowler);
         bowlerOverTV = (TextView) view.findViewById(R.id.bowloerOver);
-
+        /*batsManOneTV.setOnClickListener(selectBatsmanListener);
+        batsManTwoTV.setOnClickListener(selectBatsmanListener);*/
     }
     private void enableOptionButtons(){
         strikeBtn.setEnabled(true);
@@ -812,12 +885,15 @@ public class MainScoreFragment extends Fragment {
         return (targetScore - totalScore) / remainingOvers;
     }
     private double calculateCurrentRunRate(int totalScore, int currentOver, int ballCount) {
-        String overString= String.valueOf(new StringBuilder().append(currentOver).append(".").append(ballCount));
-        return totalScore / Double.parseDouble(overString);
-
+        if(currentOver < 1){
+            return (totalScore * 6) / ballCount;
+        }else{
+            String overString= String.valueOf(new StringBuilder().append(currentOver).append(".").append(ballCount));
+            return totalScore / Double.parseDouble(overString);
+        }
     }
 
-    private void hereComesThePain(){
+    private void finalizeScore(){
         if(illegalDeliveryText.length() == 0 && wicketDeliveryText.length() == 0){
             totalScore += runPerBall;
             ballCount += 1;
@@ -852,6 +928,7 @@ public class MainScoreFragment extends Fragment {
             strikeBtn.setEnabled(false);
             strikeBtn.setAlpha(0.5f);
         }
+        calculateExtraRuns();
         createBallStatString();
         bowlerObj.processOverAlt(runPerBall,illegalDeliveryText,byeDeliveryText,wicketDeliveryText,ballCount);
         setBowlerStats();
@@ -872,23 +949,34 @@ public class MainScoreFragment extends Fragment {
             clearBowlerTextFields();
             ballStats = "";
         }
-        currentRunRate = calculateCurrentRunRate(totalScore, currentOver, ballCount);
-        if (currentInnings == Constants.SECOND_INNINGS) {
-            reqRunRate = calculateRequiredRunRate(totalScore, targetScore, currentOver, ballCount);
-            reqRunRateTV.setText(String.format("%.2f", reqRunRate));
-        }
-        scoreTV.setText(Integer.toString(totalScore) + "/" + Integer.toString(fallOfWicket));
-        overTV.setText(Integer.toString(currentOver) + "." + Integer.toString(ballCount) + " overs");
-        runRateTV.setText(String.format("%.2f", currentRunRate));
-
         runPerBall = 0;
         inputDisplayRunText = "";
         illegalDeliveryText = "";
         byeDeliveryText = "";
         wicketDeliveryText = "";
         inputDisplayTV.setText("");
+        currentRunRate = calculateCurrentRunRate(totalScore, currentOver, ballCount);
+        if (currentInnings == Constants.SECOND_INNINGS) {
+            reqRunRate = calculateRequiredRunRate(totalScore, targetScore, currentOver, ballCount);
+            reqRunRateTV.setText(String.format("%.2f", reqRunRate));
+            processRemainingScores();
+        }
+        scoreTV.setText(Integer.toString(totalScore) + "/" + Integer.toString(fallOfWicket));
+        overTV.setText(Integer.toString(currentOver) + "." + Integer.toString(ballCount) + " overs");
+        runRateTV.setText(String.format("%.2f", currentRunRate));
+        extraScoreTV.setText(String.format("%d",inningsExtra));
         checkEndOfInnings();
     }
+
+    private void calculateExtraRuns() {
+        if(illegalDeliveryText.length() > 0){
+            inningsExtra += Constants.ILLEGAL_DELIVERY_SCORE;
+        }
+        if(byeDeliveryText.length() > 0){
+            inningsExtra += runPerBall;
+        }
+    }
+
     private void addIndividualScoreAlt(){
         if(strikePointer == 0){
             if(byeDeliveryText.length() > 0){
@@ -903,5 +991,10 @@ public class MainScoreFragment extends Fragment {
                 model2.processRun(runPerBall);
             }
         }
+    }
+    private void processRemainingScores(){
+        int remainingRuns = targetScore - totalScore;
+        int remainingBalls = ((totalOver - currentOver) * 6) - ballCount;
+        inputDisplayTV.setText(secondInningsTeam+" requires "+remainingRuns+" run(s) from "+remainingBalls+" ball(s)");
     }
 }

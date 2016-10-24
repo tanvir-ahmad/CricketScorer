@@ -154,8 +154,12 @@ public class BowlerModel {
                 || wicketDelivery.equals(Constants.WICKET_CATCH) || wicketDelivery.equals(Constants.WICKET_HITOUT)){
             bowlerWicket += 1;
         }
-        String overString = String.valueOf(new StringBuilder().append(overCount).append(".").append(this.ballCount));
-        double over = Double.parseDouble(overString);
-        bowlerEcon = (double)bowlerRun / over;
+        if(overCount < 1){
+            bowlerEcon = (bowlerRun * 6) / ballCount;
+        }else{
+            String overString = String.valueOf(new StringBuilder().append(overCount).append(".").append(this.ballCount));
+            double over = Double.parseDouble(overString);
+            bowlerEcon = (double)bowlerRun / over;
+        }
     }
 }
