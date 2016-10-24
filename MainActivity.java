@@ -15,8 +15,11 @@ import android.view.MenuItem;
 import android.widget.Toast;
 
 import com.example.user.quickscorer.Interface.ScorecardListener;
+import com.example.user.quickscorer.Preference.GamePreference;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 
 public class MainActivity extends AppCompatActivity{
     private ViewPager mViewPager;
@@ -32,11 +35,13 @@ public class MainActivity extends AppCompatActivity{
     private ArrayList<BowlerModel> firstInningsBowlingScorecard;
     private ArrayList<BowlerModel> secondInningsBowlingScorecard;
     private Scorecard scorecard;
+    private GamePreference gamePreference;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        gamePreference = new GamePreference(this);
         scorecard = new Scorecard();
         firstInningsTeam = getIntent().getStringExtra("firstInningsTeam");
         secondInningsTeam = getIntent().getStringExtra("secondInningsTeam");
@@ -45,6 +50,12 @@ public class MainActivity extends AppCompatActivity{
         totalOver = getIntent().getIntExtra("totalOver",0);
         teamOneId = getIntent().getIntExtra("teamOneId",0);
         teamTwoId = getIntent().getIntExtra("teamTwoId",0);
+        /*
+        * SAVE GAME PREFERENCES
+        * */
+        gamePreference.saveGamePreferences(getDate(),firstInningsTeam,secondInningsTeam,tossWinner,
+                Integer.toString(totalOver),getResources().getString(R.string.game_status_on));
+
         firstInningsBattingScoreCard = new ArrayList<>();
         firstInningsBowlingScorecard = new ArrayList<>();
         secondInningsBattingScoreCard = new ArrayList<>();
@@ -117,5 +128,15 @@ public class MainActivity extends AppCompatActivity{
                 startActivity(new Intent(MainActivity.this,NewGameActivity.class));
         }
         return super.onOptionsItemSelected(item);
+    }
+
+    @Override
+    public void onBackPressed() {
+    }
+    private String getDate(){
+        Calendar c=Calendar.getInstance();
+        SimpleDateFormat sdf=new SimpleDateFormat("dd/MM/yyyy hh:mm:ssa");
+        String today=sdf.format(c.getTime());
+        return today;
     }
 }
